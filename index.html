@@ -3524,30 +3524,36 @@ body::before{opacity:.42;}
   }
 }
 
-/* 選手模式：頁首只呈現目前最接近的未完成場次。 */
-.player-next-match-card{
+/* 選手模式：每張提示對應樹狀圖上同一組裁判台預排場次。 */
+.player-next-match-cards{
   display:none;
-  width:100%; min-height:58px; margin:8px 0 10px; padding:10px 14px;
-  align-items:center; justify-content:space-between; gap:12px;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));
+  gap:6px; margin:7px 0 9px;
+}
+.viewer-mode .player-next-match-cards:not(.hidden){display:grid;}
+.player-next-match-card{
+  display:flex; width:100%; min-width:0; min-height:52px; margin:0; padding:8px 11px;
+  align-items:center; justify-content:space-between; gap:10px;
   color:#f5f0e7; text-align:left; cursor:pointer;
-  border:1px solid rgba(233,187,104,.34); border-radius:10px;
+  border:1px solid rgba(233,187,104,.34); border-radius:9px;
   background:linear-gradient(105deg,rgba(233,187,104,.12),rgba(233,187,104,.035) 58%,rgba(255,255,255,.02));
   box-shadow:inset 3px 0 0 #e9bb68;
   -webkit-tap-highlight-color:transparent; touch-action:manipulation;
 }
-.viewer-mode .player-next-match-card:not(.hidden){display:flex;}
 .player-next-match-card:active{transform:scale(.99);background-color:rgba(233,187,104,.08);}
 .player-next-match-card:focus-visible{outline:2px solid #e9bb68;outline-offset:2px;}
-.player-next-match-copy{display:flex;flex-direction:column;min-width:0;gap:4px;}
-.player-next-match-meta{color:#d8ba83;font:700 11px/1.2 'Noto Sans TC',sans-serif;letter-spacing:.06em;}
+.player-next-match-copy{display:flex;flex-direction:column;min-width:0;gap:3px;}
+.player-next-match-meta{color:#d8ba83;font:700 10px/1.2 'Noto Sans TC',sans-serif;letter-spacing:.06em;}
 .player-next-match-versus{
   display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  color:#fff8ed; font:800 17px/1.25 'Noto Sans TC',sans-serif;
+  color:#fff8ed; font:800 16px/1.2 'Noto Sans TC',sans-serif;
 }
-.player-next-match-arrow{flex:0 0 auto;color:#e9bb68;font:400 32px/1 sans-serif;transform:translateY(-1px);}
+.player-next-match-arrow{flex:0 0 auto;color:#e9bb68;font:400 27px/1 sans-serif;transform:translateY(-1px);}
 @media(max-width:700px){
-  .player-next-match-card{min-height:56px;margin:7px 0 9px;padding:9px 12px;}
-  .player-next-match-versus{font-size:16px;}
+  .player-next-match-cards{gap:5px;margin:6px 0 8px;}
+  .player-next-match-card{min-height:49px;padding:7px 10px;}
+  .player-next-match-versus{font-size:15px;}
+  .player-next-match-arrow{font-size:25px;}
 }
 </style>
 <style id="archive-redesign">
@@ -4191,13 +4197,7 @@ body::before{opacity:.42;}
       </div>
     </div>
     <button class="app-update-banner" id="appUpdateBanner" type="button" onclick="applyLatestAppUpdate()" aria-live="polite"></button>
-    <button class="player-next-match-card" id="playerNextMatchCard" type="button" onclick="openPlayerNextMatch()" aria-label="前往下一場對戰紀錄">
-      <span class="player-next-match-copy">
-        <span class="player-next-match-meta" id="playerNextMatchMeta"></span>
-        <strong class="player-next-match-versus" id="playerNextMatchVersus"></strong>
-      </span>
-      <span class="player-next-match-arrow" aria-hidden="true">›</span>
-    </button>
+    <div class="player-next-match-cards hidden" id="playerNextMatchCards" aria-live="polite" aria-label="即將上場對戰"></div>
     <div class="header-release-row">
       <button class="pwa-install-btn" id="pwaInstallBtn" type="button" onclick="requestPWAInstall()" aria-label="將網站安裝到手機主畫面">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 18h6M12 6v7m-3-3 3 3 3-3"/></svg>
@@ -11008,6 +11008,9 @@ function renderReferee(){
     const match = state.matches.find(m => m.id === panel.matchId);
     renderRefereeMatch(match, panel.id);
   });
+  // Keep the viewer header's upcoming cards aligned with the bracket badges
+  // whenever table assignments, table count, or a manual preview changes.
+  renderPlayerNextMatchCard();
 }
 
 function nextPlayableMatch(excludeIds){
@@ -11652,30 +11655,52 @@ function resetTournament(){
    PLAYER MODE — NEXT MATCH CARD
 ========================================================= */
 function renderPlayerNextMatchCard(){
-  const card = document.getElementById('playerNextMatchCard');
-  const meta = document.getElementById('playerNextMatchMeta');
-  const versus = document.getElementById('playerNextMatchVersus');
-  if(!card || !meta || !versus) return;
+  const cards = document.getElementById('playerNextMatchCards');
+  if(!cards) return;
 
-  const match = currentRole === 'viewer' ? nextPlayableMatch() : null;
-  card.classList.toggle('hidden', !match);
-  if(!match){
-    card.removeAttribute('data-match-id');
-    meta.textContent = '';
-    versus.textContent = '';
-    return;
-  }
+  // Use the same per-panel preview map as the bracket renderer. That guarantees
+  // each top card matches one visible "即將上場" badge and follows table switches.
+  const matches = currentRole === 'viewer'
+    ? [...new Map(Object.values(computeNextMatchAssignments())
+        .filter(Boolean).map(match => [match.id, match])).values()]
+    : [];
+  cards.replaceChildren();
+  cards.classList.toggle('hidden', matches.length === 0);
+  cards.setAttribute('aria-label', matches.length
+    ? `${matches.length} 場即將上場對戰`
+    : '目前沒有即將上場的對戰');
 
-  const matchLabel = formatMatchNumberLabel(realMatchNumber(match));
-  meta.textContent = matchLabel ? `${matchLabel}・即將上場` : '即將上場';
-  versus.textContent = `${nameOf(match.playerA)} vs ${nameOf(match.playerB)}`;
-  card.dataset.matchId = match.id;
-  card.setAttribute('aria-label', `${meta.textContent}，${versus.textContent}，前往對戰紀錄`);
+  matches.forEach(match => {
+    const matchLabel = formatMatchNumberLabel(realMatchNumber(match));
+    const metaText = matchLabel ? `${matchLabel}・即將上場` : '即將上場';
+    const versusText = `${nameOf(match.playerA)} vs ${nameOf(match.playerB)}`;
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'player-next-match-card';
+    card.dataset.matchId = match.id;
+    card.setAttribute('aria-label', `${metaText}，${versusText}，前往對戰紀錄`);
+    card.addEventListener('click', () => openPlayerNextMatch(match.id));
+
+    const copy = document.createElement('span');
+    copy.className = 'player-next-match-copy';
+    const meta = document.createElement('span');
+    meta.className = 'player-next-match-meta';
+    meta.textContent = metaText;
+    const versus = document.createElement('strong');
+    versus.className = 'player-next-match-versus';
+    versus.textContent = versusText;
+    copy.append(meta, versus);
+
+    const arrow = document.createElement('span');
+    arrow.className = 'player-next-match-arrow';
+    arrow.setAttribute('aria-hidden', 'true');
+    arrow.textContent = '›';
+    card.append(copy, arrow);
+    cards.appendChild(card);
+  });
 }
 
-function openPlayerNextMatch(){
-  const card = document.getElementById('playerNextMatchCard');
-  const matchId = card && card.dataset.matchId;
+function openPlayerNextMatch(matchId){
   if(!matchId) return;
 
   matchStatusFilter = 'all';
